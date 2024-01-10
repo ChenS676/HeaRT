@@ -1,6 +1,6 @@
 # HeaRT
 
-Official code for the paper ["Evaluating Graph Neural Networks for Link Prediction: Current Pitfalls and New Benchmarking"](https://arxiv.org/pdf/2306.10453.pdf).
+Official code for the NeurIPS'23 paper ["Evaluating Graph Neural Networks for Link Prediction: Current Pitfalls and New Benchmarking"](https://arxiv.org/pdf/2306.10453.pdf).
 
 
 ## Installation
@@ -82,12 +82,18 @@ A custom set of negative samples can be produced by running the `heart_negatives
 - The PPR parameters. This includes the tolerance used for approximating the PPR (`--eps` argument) and the teleporation probability (`--alpha` argument). `alpha` is fixed at 0.15 for all datasets. For the tolerance, `eps`, we recommend following the settings found in `scripts/HeaRT`.
 
 
+## Updates
+
+**November 3rd, 2023**
+* Modified the negative samples for ogbl-collab to **allow** train/valid positive samples to be negatives. Please see Appendix I in the paper for our rationale. 
+
 ## Cite
 ```
-@article{li2023evaluating,
+@inproceedings{
+  li2023evaluating,
   title={Evaluating Graph Neural Networks for Link Prediction: Current Pitfalls and New Benchmarking},
   author={Li, Juanhui and Shomer, Harry and Mao, Haitao and Zeng, Shenglai and Ma, Yao and Shah, Neil and Tang, Jiliang and Yin, Dawei},
-  journal={arXiv preprint arXiv:2306.10453},
+  booktitle={Neural Information Processing Systems {NeurIPS}, Datasets and Benchmarks Track},
   year={2023}
 }
 ```

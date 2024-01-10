@@ -5,7 +5,7 @@ import scipy.sparse as ssp
 from collections import Counter
 
 import sys
-sys.path.append("..") 
+sys.path.insert(0, "/pfs/work7/workspace/scratch/cc7738-nlp_graph/HeaRT_Mao/benchmarking") 
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
@@ -126,8 +126,6 @@ def get_prediction(A, full_A, use_heuristic, pos_val_edge, neg_val_edge, pos_tes
 
 
 def get_metric_score(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred):
-
-    
    
     result = {}
     k_list = [1, 3, 10, 100]
@@ -148,7 +146,7 @@ def main():
     parser = argparse.ArgumentParser(description='homo')
     parser.add_argument('--data_name', type=str, default='cora')
     parser.add_argument('--neg_mode', type=str, default='equal')
-    parser.add_argument('--use_heuristic', type=str, default='katz_apro')
+    parser.add_argument('--use_heuristic', type=str, default='CN')
     parser.add_argument('--use_valedges_as_input', action='store_true', default=False)
     parser.add_argument('--input_dir', type=str, default=os.path.join(get_root_dir(), "dataset"))
     parser.add_argument('--filename', type=str, default='samples.npy')
@@ -199,8 +197,6 @@ def main():
     evaluator_mrr = Evaluator(name='ogbl-citation2')
 
     # Counter(pos_test_pred.numpy())
-
-   
     neg_val_pred = neg_val_pred.view( pos_val_pred.size(0), -1)
     neg_test_pred = neg_test_pred.view(pos_test_pred.size(0), -1)
 

@@ -3,6 +3,8 @@ import numpy as np
 import argparse
 import scipy.sparse as ssp
 from collections import Counter
+import os, sys
+sys.path.insert(0, "/pfs/work7/workspace/scratch/cc7738-nlp_graph/HeaRT_Mao/benchmarking") 
 
 import sys
 sys.path.append("..") 
@@ -27,9 +29,11 @@ from ogb.linkproppred import PygLinkPropPredDataset, Evaluator
 from utils import *
 from get_heuristic import *
 from evalutors import evaluate_hits, evaluate_auc, evaluate_mrr
+from pdb import set_trace as bp
 
-
-def get_prediction(A, full_A, use_heuristic, pos_val_edge, neg_val_edge, pos_test_edge, neg_test_edge, args):
+def get_prediction(A, full_A, use_heuristic, pos_val_edge, neg_val_edge, 
+                   pos_test_edge, neg_test_edge, pos_train_edge,
+                   args):
 
     beta, path_len = args.beta, args.path_len
     remove = args.remove
@@ -53,17 +57,51 @@ def get_prediction(A, full_A, use_heuristic, pos_val_edge, neg_val_edge, pos_tes
         pos_val_pred = eval(use_heuristic)(A, pos_val_edge)
         print('evaluate neg vlaid: ')
         neg_val_pred = eval(use_heuristic)(A, neg_val_edge)
-
-
+        
+        pos_train_pred = eval(use_heuristic)(A, pos_train_edge)
+        
         print('evaluate pos test: ')
         pos_test_pred = eval(use_heuristic)(full_A, pos_test_edge)
         print('evaluate neg test: ')
 
         neg_test_pred = eval(use_heuristic)(full_A, neg_test_edge)
 
-    return pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred
+    return pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred, pos_train_pred
 
- 
+import numpy as np
+from scipy.spatial import distance
+
+def get_fp_prediction(data, test_pos, test_neg, args):
+    test_pos, test_neg = test_pos.numpy().transpose(), test_neg.numpy().transpose()
+    test_pos_pred, test_neg_pred = [], []
+
+    distance_metric = {
+        'cos': distance.cosine,
+        'l2': distance.euclidean,
+        'hamming': distance.hamming,
+        'jaccard': distance.jaccard,
+        'dice': distance.dice,
+        'dot': lambda x, y: np.dot(x, y)
+    }
+
+    if args.distance not in distance_metric:
+        raise ValueError("Invalid distance metric specified.")
+
+    metric_function = distance_metric[args.distance]
+
+    for ind in test_pos:
+        metric_value = metric_function(data[ind[0]], data[ind[1]])
+        test_pos_pred.append(metric_value)
+
+    for ind_n in test_neg:
+        metric_value = metric_function(data[ind_n[0]], data[ind_n[1]])
+        test_neg_pred.append(metric_value)
+
+    test_pos_pred, test_neg_pred = torch.tensor(np.asarray(test_pos_pred)), torch.tensor(np.asarray(test_neg_pred))
+    return test_pos_pred, test_neg_pred
+
+
+
 def get_metric_citation2(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred):
     
     k_list = [20, 50, 100]
@@ -79,6 +117,7 @@ def get_metric_citation2(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pre
         result[f'Hits@{K}'] = (result_mrr_train[f'mrr_hit{K}'], result_mrr_val[f'mrr_hit{K}'], result_mrr_test[f'mrr_hit{K}'])
 
     return result
+
 
 def get_metric_score(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred, use_mrr):
 
@@ -127,13 +166,60 @@ def get_metric_score(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, p
 
     return result
 
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+
+def get_hist(args, pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred,  pos_train_pred):
+    cn_dist = torch.cat((pos_val_pred, 
+                         neg_val_pred, 
+                         pos_test_pred,
+                         neg_test_pred,
+                         pos_train_pred), 0).numpy()
+    data_df = pd.DataFrame({'size': cn_dist})
+
+    data_df_filtered = data_df[data_df['size'] != 0.0]
+    
+    
+def get_test_hist(args, A, pos_test_pred, neg_test_pred, use_heuristic):
+   
+    bin_edges = [-1, 0, 1, 3, 10, 25, float('inf')]
+    
+    pred = torch.cat([pos_test_pred, neg_test_pred], dim=0)
+    hist, bin_edges = np.histogram(pred, bins=bin_edges)
+    
+    hist = hist / hist.sum()
+    plt.figure(figsize=(10, 8))
+    plt.bar([1, 2, 3, 4, 5], hist)
+    
+    custom_ticks = [1, 2, 3, 4, 5]
+    custom_labels = ['[0-1]', '[1-3]', '[3-10]', '[10-25]', '25-inf']
+
+    dirpath = '/pfs/work7/workspace/scratch/cc7738-nlp_graph/HeaRT_Mao/benchmarking/exist_setting_ogb'
+    
+    plt.xticks(custom_ticks, custom_labels)
+    plt.title(f'{args.data_name}_{use_heuristic}_filtered')
+    plt.xlabel('Num of CN')  
+    plt.ylabel('Propotion')  
+    plt.title(f'CN distribution of {args.data_name}')
+    plt.savefig(f'{dirpath}/{args.data_name}_{use_heuristic}_test_filtered.png')
+    
+    plt.figure(figsize=(10, 8))
+    sns.barplot(x=[1, 2, 3, 4, 5], y=hist, color='skyblue')
+    plt.xticks([0, 1, 2, 3, 4], ['[0-1]', '[1-3]', '[3-10]', '[10-25]', '25-inf'], fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.title('CN distribution', fontsize=24)
+    plt.xlabel('Num of CN', fontsize=20)
+    plt.ylabel('Proportion', fontsize=20)
+    plt.savefig(f'{dirpath}/sns{args.data_name}_{use_heuristic}_test_filtered.png')
+        
+
 def main():
     parser = argparse.ArgumentParser(description='homo')
-    parser.add_argument('--data_name', type=str, default='ogbl-citation2')
+    parser.add_argument('--data_name', type=str, default='ogbl-ppa')
     parser.add_argument('--neg_mode', type=str, default='equal')
-    parser.add_argument('--use_heuristic', type=str, default='CN')
+    parser.add_argument('--use_heuristic', type=str, default='FP')
 
-    
     parser.add_argument('--use_valedges_as_input', action='store_true', default=False)
     parser.add_argument('--use_mrr', action='store_true', default=False)
 
@@ -143,16 +229,16 @@ def main():
 
     parser.add_argument('--output_dir', type=str, default='output_test')
     parser.add_argument('--remove', action='store_true', default=False)
-    
-
+    parser.add_argument('--distance', type=str, default='dot')
     args = parser.parse_args()
     print(args)
 
     # dataset = Planetoid('.', 'cora')
-
     dataset = PygLinkPropPredDataset(name=args.data_name, root=os.path.join(get_root_dir(), "dataset", args.data_name))
-    
+
     data = dataset[0]
+    g = torch_geometric.utils.to_networkx(data, to_undirected=True)
+    nx.draw(g)
     
     use_heuristic = args.use_heuristic
     split_edge = dataset.get_edge_split()
@@ -163,26 +249,17 @@ def main():
         if data.edge_weight != None:
             # edge_weight = data.edge_weight.to(torch.float)
             edge_weight = data.edge_weight.view(-1).to(torch.float)
-           
         else:
             edge_weight = torch.ones(data.edge_index.size(1), dtype=int)
-
     else:
-        
         edge_weight = torch.ones(data.edge_index.size(1), dtype=int)
-
-    
 
     if args.data_name != 'ogbl-citation2':
         pos_train_edge = split_edge['train']['edge'].t()
-
         pos_valid_edge = split_edge['valid']['edge'].t()
         neg_valid_edge = split_edge['valid']['edge_neg'].t()
         pos_test_edge = split_edge['test']['edge'].t()
         neg_test_edge = split_edge['test']['edge_neg'].t()
-
-        
-    
     else:
         source_edge, target_edge = split_edge['train']['source_node'], split_edge['train']['target_node']
         pos_train_edge = torch.cat([source_edge.unsqueeze(0), target_edge.unsqueeze(0)], dim=0)
@@ -211,8 +288,6 @@ def main():
     A = ssp.csr_matrix((edge_weight, (edge_index[0], edge_index[1])), 
                        shape=(node_num, node_num))
     
-        
-
     if args.use_valedges_as_input:
         print('use validation!!!')
         val_edge_index = pos_valid_edge
@@ -222,8 +297,6 @@ def main():
         val_edge_weight = torch.ones([val_edge_index.size(1)], dtype=int)
 
         edge_weight = torch.cat([edge_weight, val_edge_weight], 0)
-        
-
 
         full_A = ssp.csr_matrix((edge_weight, (edge_index[0], edge_index[1])), 
                         shape=(node_num, node_num)) 
@@ -235,27 +308,30 @@ def main():
     print('A: ', A.nnz)
     print('full_A: ', full_A.nnz)
 
-    # if args.data_name == 'ogbl-citation2':
-    #     print(1)
-
-
     # else:
     print('edge size', pos_valid_edge.size(), neg_valid_edge.size(), pos_test_edge.size(), neg_test_edge.size())
-    pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred = get_prediction(A, full_A, use_heuristic, pos_valid_edge, neg_valid_edge, pos_test_edge, neg_test_edge, args)
-
+     
+    if args.use_heuristic != 'FP':
+        pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred,  pos_train_pred = get_prediction(A, \
+                full_A, use_heuristic, pos_valid_edge, neg_valid_edge, pos_test_edge, neg_test_edge, pos_train_edge, args)
+        get_test_hist(args, full_A, pos_test_pred, neg_test_pred,  use_heuristic)
+    else:
+        pos_test_pred, neg_test_pred = get_fp_prediction(data.x, pos_test_edge, neg_test_edge, args)
+         
+        
     state = {
         'pos_val': pos_val_pred,
         'neg_val': neg_val_pred,
         'pos_test': pos_test_pred,
-        'neg_test': neg_test_pred
+        'neg_test': neg_test_pred,
+        'pos_train': pos_train_pred
     }
+    
     save_path = args.output_dir + '/beta'+ str(args.beta) + '_pathlen'+ str(args.path_len) + '_' + 'save_score'
     # torch.save(state, save_path)
 
     evaluator_hit = Evaluator(name='ogbl-collab')
     evaluator_mrr = Evaluator(name='ogbl-citation2')
-
-    # Counter(pos_test_pred.numpy())
 
     if args.data_name == 'ogbl-citation2':
        
@@ -263,7 +339,7 @@ def main():
         neg_test_pred = neg_test_pred.view(-1, test_neg_edge.size(1))
         print('pred size', pos_val_pred.size(), neg_val_pred.size(), pos_test_pred.size(), neg_test_pred.size())
 
-        results = get_metric_citation2(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
+        results = get_metric_score(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
         print('heurisitic: ', args.use_heuristic) 
           
         for key, result in results.items():
@@ -272,16 +348,9 @@ def main():
             print( f'Train: {100 * train_hits:.2f}%, '
                                 f'Valid: {100 * valid_hits:.2f}%, '
                                 f'Test: {100 * test_hits:.2f}%')
-            
         # print('valid/test mrr of ' + args.data_name + ' is: ', result['MRR'][0], result['MRR'][1])
-        
     else:
-
-        print(pos_val_pred.size(), neg_val_pred.size(), pos_test_pred.size(), neg_test_pred.size())
         result = get_metric_score(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred, args.use_mrr)
-    
-    
-    
 
         print('heurisitic: ', args.use_heuristic)    
 
