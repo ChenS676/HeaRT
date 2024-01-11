@@ -9,45 +9,35 @@ import torch
 from deepsnap.graph import Graph
 from deepsnap.batch import Batch
 from deepsnap.dataset import GraphDataset
+from operator import itemgetter
+  
+root_path = '/pfs/work7/workspace/scratch/cc7738-nlp_graph/HeaRT/'
+color_map = None
+seed = 1234
 
-
-def visualize(G, color_map=None, seed=123):
+                
+def visualize(G, seed, name, color_map=None):
   if color_map is None:
     color_map = '#c92506'
   pos=nx.spring_layout(G, seed=seed)
+  
   plt.figure(figsize=(8, 8))
   nodes = nx.draw_networkx_nodes(G, pos=pos, \
                                  label=None, node_color=color_map, node_shape='o', node_size=150)
   edges = nx.draw_networkx_edges(G, pos=pos, alpha=0.5)
+  
   #   if color_map is not None:
   #     plt.scatter([],[], c='#c92506', label='Nodes with label 0', edgecolors="black", s=140)
   #     plt.scatter([],[], c='#fcec00', label='Nodes with label 1', edgecolors="black", s=140)
   #     plt.legend(prop={'size': 13}, handletextpad=0)
+  
   nodes.set_edgecolor('black')
-  plt.show()
+  plt.savefig(f'{name}_spring.png')
   
   
 if 'IS_GRADESCOPE_ENV' not in os.environ:
-#   num_nodes = 100
-#   p = 0.05
-#   seed = 100
 
-#   # Generate a networkx random graph
-#   G = nx.gnp_random_graph(num_nodes, p, seed=seed)
-
-#   # Generate some random node features and labels
-#   node_feature = {node : torch.rand([5, ]) for node in G.nodes()}
-#   node_label = {node : torch.randint(0, 2, ()) for node in G.nodes()}
-
-#   # Set the random features and labels to G
-#   nx.set_node_attributes(G, node_feature, name='node_feature')
-#   nx.set_node_attributes(G, node_label, name='node_label')
-
-#   # Print one node example
-#   for node in G.nodes(data=True):
-#     print(node)
-#     break
-    data_name = "ogbl-collab"
+    data_name = "ogbl-ddi"
     if data_name in ['cora', 'citeseer', 'pubmed']:
         dataset = Planetoid(root='./dataset', name=data_name)
     else:
@@ -74,18 +64,18 @@ if 'IS_GRADESCOPE_ENV' not in os.environ:
 # if color_map is None:
 #     color_map = '#c92506'
 
-plt.figure(figsize=(18, 18))
-pos =  nx.kamada_kawai_layout(g)
+# plt.figure(figsize=(18, 18))
+# pos =  nx.kamada_kawai_layout(g)
 
-nodes = nx.draw_networkx_nodes(g, pos=pos, \
-                                label=None, node_color='#c92506', node_shape='o', node_size=150)
-edges = nx.draw_networkx_edges(g, pos=pos, alpha=0.4)
-#   if color_map is not None:
-#     plt.scatter([],[], c='#c92506', label='Nodes with label 0', edgecolors="black", s=140)
-#     plt.scatter([],[], c='#fcec00', label='Nodes with label 1', edgecolors="black", s=140)
-#     plt.legend(prop={'size': 13}, handletextpad=0)
-nodes.set_edgecolor('black')
-plt.savefig(f'/pfs/work7/workspace/scratch/cc7738-nlp_graph/HeaRT_Mao/{data_name}_spring.png')
+# nodes = nx.draw_networkx_nodes(g, pos=pos, \
+#                                 label=None, node_color='#c92506', node_shape='o', node_size=150)
+# edges = nx.draw_networkx_edges(g, pos=pos, alpha=0.4)
+# #   if color_map is not None:
+# #     plt.scatter([],[], c='#c92506', label='Nodes with label 0', edgecolors="black", s=140)
+# #     plt.scatter([],[], c='#fcec00', label='Nodes with label 1', edgecolors="black", s=140)
+# #     plt.legend(prop={'size': 13}, handletextpad=0)
+# nodes.set_edgecolor('black')
+# plt.savefig(f'/pfs/work7/workspace/scratch/cc7738-nlp_graph/HeaRT_Mao/{data_name}_spring.png')
   
 
 # TODO visualize the graph with different size of vertex of degree
@@ -123,6 +113,49 @@ def visual_degree(G):
   ax2.set_ylabel("# of Nodes")
 
   fig.tight_layout()
-  plt.savefig(f'/pfs/work7/workspace/scratch/cc7738-nlp_graph/HeaRT_Mao/{data_name}_deg.png')
+  plt.savefig(f'{root_path}/{data_name}_deg.png')
+ 
+ 
+def visual_lcc(G):
+  plt.figure("Degree of a random graph", figsize=(8, 8))
+  Gcc = G.subgraph(sorted(nx.connected_components(G), key=len, reverse=True)[0])
+  pos = nx.spring_layout(Gcc, seed=10396953)
+  nx.draw_networkx_nodes(Gcc, pos, node_size=20)
+  nx.draw_networkx_edges(Gcc, pos, alpha=0.4)
+  plt.title("Connected components of G")
+  plt.savefig(f'{root_path}/{data_name}_deg.png')
   
-visual_degree(g)
+# visual_lcc(g)
+# visualize(g, seed, f'{root_path}/{data_name}_deg', color_map)
+# visual_degree(g)
+
+def subgraph_plot(g):
+  # Calculate the degree of each node
+  degrees = g.degree()
+
+  # Find the node with the maximum degree
+  index = max(degrees, key=lambda x: x[1])[0]
+  k = nx.ego_graph(g, index, radius=1)
+  visualize(k, seed, f'subgraph_{data_name}{index}', color_map)
+
+# subgraph_plot(g)
+
+def visual_ego_graph(g):
+
+  # find node with largest degree
+  node_and_degree = g.degree()
+  (largest_hub, degree) = sorted(node_and_degree, key=itemgetter(1))[-1]
+
+  # Create ego graph of main hub
+  hub_ego = nx.ego_graph(g, largest_hub)
+
+  # Draw graph
+  pos = nx.spring_layout(hub_ego, seed=seed)  # Seed layout for reproducibility
+  nx.draw(hub_ego, pos, node_color="b", node_size=10, with_labels=False)
+
+  # Draw ego as large and red
+  options = {"node_size": 300, "node_color": "r"}
+  nx.draw_networkx_nodes(hub_ego, pos, nodelist=[largest_hub], **options)
+  plt.savefig(f'{root_path}{data_name}_ego.png')
+  
+visual_ego_graph(g)
