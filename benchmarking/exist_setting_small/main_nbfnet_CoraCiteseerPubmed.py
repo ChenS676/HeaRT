@@ -328,8 +328,6 @@ def test(cfg, model, val_data, test_data,  evaluator_hit, evaluator_mrr):
     world_size = util.get_world_size()
     rank = util.get_rank()
 
-    
-
     pos_valid_pred = test_edge(cfg, model, val_data.target_edge_index, val_data, world_size, rank)
 
     neg_valid_pred = test_edge(cfg, model, val_data.target_neg, val_data, world_size, rank)
